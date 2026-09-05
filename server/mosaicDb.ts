@@ -352,6 +352,29 @@ export async function createTeacherClassroom(input: { name: string; subject: str
   return classSummary(row);
 }
 
+export async function updateTeacherClassroom(id: string, input: { name: string; description?: string; yearLevel: string }) {
+  const db = await getDb();
+  if (!db || !/^[0-9]+$/.test(id)) return { success: true, id, ...input };
+  await db.update(classrooms).set({ name: input.name, description: input.description ?? null, yearLevel: input.yearLevel }).where(eq(classrooms.id, Number(id)));
+  const row = (await db.select().from(classrooms).where(eq(classrooms.id, Number(id))).limit(1))[0];
+  return row ? classSummary(row) : { success: true, id, ...input };
+}
+
+export async function regenerateClassroomCode(id: string) {
+  const db = await getDb();
+  const kioskCode = Math.random().toString(36).substring(2, 9).toUpperCase();
+  if (!db || !/^[0-9]+$/.test(id)) return { success: true, id, kioskCode };
+  await db.update(classrooms).set({ kioskCode }).where(eq(classrooms.id, Number(id)));
+  return { success: true, id, kioskCode };
+}
+
+export async function listClassroomStudents(id: string) {
+  const db = await getDb();
+  if (!db || !/^[0-9]+$/.test(id)) return [];
+  const rows = await db.select().from(learners).where(eq(learners.classroomId, Number(id))).orderBy(asc(learners.name));
+  return rows.map((row) => ({ id: row.externalId, name: row.name, initials: row.initials, tier: row.tier, recent: row.recent }));
+}
+
 export async function createChapter(input: { title: string; description: string; published: boolean }) {
   const { db, classroom } = await getClassroomRow();
   if (!db || !classroom) return { id: `demo-chapter-${Date.now()}`, ...input, orderIndex: 99 };

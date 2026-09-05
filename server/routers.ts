@@ -34,6 +34,9 @@ import {
   listMisconceptionsForTopic,
   listTeacherQuestions,
   setTeacherQuestionActive,
+  updateTeacherClassroom,
+  regenerateClassroomCode,
+  listClassroomStudents,
 } from "./mosaicDb";
 import { CLASSROOM, DEMO_LEARNERS, PULSE_QUESTIONS, tierMeta, type Learner } from "../shared/mosaic";
 
@@ -136,6 +139,9 @@ export const appRouter = router({
   mosaic: router({
     listTeacherClasses: publicProcedure.query(({ ctx }) => listTeacherClassrooms(ctx.user?.id)),
     createClass: publicProcedure.input(z.object({ name: z.string().trim().min(2).max(160), subject: z.string().trim().min(2).max(120), yearLevel: z.string().trim().min(2).max(40), topics: z.array(z.string().trim().min(1).max(160)).min(1).max(20), description: z.string().trim().max(1000).optional() })).mutation(({ input, ctx }) => createTeacherClassroom(input, ctx.user?.id)),
+    updateClass: publicProcedure.input(z.object({ id: z.string(), name: z.string().trim().min(2).max(160), description: z.string().trim().max(1000).optional(), yearLevel: z.string().trim().min(2).max(40) })).mutation(({ input }) => updateTeacherClassroom(input.id, input)),
+    regenerateClassCode: publicProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => regenerateClassroomCode(input.id)),
+    classStudents: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => listClassroomStudents(input.id)),
     dashboard: publicProcedure.query(async () => {
       const state = await readClassroomState();
       const { counts, massWeightCount, confidentErrors, confusedAttempts } = cohortSummary(state.learners);
