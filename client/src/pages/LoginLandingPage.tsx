@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, ArrowRight, BookOpen, Loader2, UserRound } from "lucide-react";
+import { AlertCircle, ArrowRight, BookOpen, Loader2, Sparkles, UserRound } from "lucide-react";
 import { useLocation } from "wouter";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { startLogin } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
+import HowItWorks from "@/components/shared/HowItWorks";
 
 type PanelRole = "teacher" | "student";
 
@@ -70,6 +71,7 @@ export default function LoginLandingPage() {
   const [confirm, setConfirm] = useState("");
   const [registerError, setRegisterError] = useState("");
   const [registerBusy, setRegisterBusy] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
 
   useEffect(() => {
     const message = sessionStorage.getItem("mosaic-toast");
@@ -92,5 +94,5 @@ export default function LoginLandingPage() {
     startLogin();
   };
 
-  return <main className="login-landing"><header className="login-landing__header"><div className="login-brand"><span className="mosaic-mark">M</span><span><b>Mosaic</b><small>Classroom</small></span></div><p>Every student, one classroom. Every path, different.</p></header><div className="login-panels"><RolePanel role="teacher" onRegister={() => setRegisterOpen(true)} /><div className="login-divider"><span>or</span></div><RolePanel role="student" onRegister={() => undefined} /></div><Dialog open={registerOpen} onOpenChange={setRegisterOpen}><DialogContent><DialogHeader><DialogTitle>Create a teacher account</DialogTitle><DialogDescription>Set up your educator access, then continue through Mosaic’s secure login.</DialogDescription></DialogHeader><form className="register-form" onSubmit={register}><label>Full name<Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Aida Rahman" /></label><label>Email<Input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="teacher@school.edu" /></label><label>Password<Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="At least 8 characters" /></label><label>Confirm password<Input value={confirm} onChange={(event) => setConfirm(event.target.value)} type="password" placeholder="Repeat your password" /></label>{registerError && <Alert variant="destructive"><AlertDescription>{registerError}</AlertDescription></Alert>}<Button type="submit" disabled={registerBusy}>{registerBusy ? <><Loader2 className="animate-spin" size={15} />Creating…</> : "Create teacher account"}</Button></form></DialogContent></Dialog></main>;
+  return <main className="login-landing"><header className="login-landing__header"><div className="login-brand"><span className="mosaic-mark">M</span><span><b>Mosaic</b><small>Classroom</small></span></div><p>Every student, one classroom. Every path, different.</p></header><div className="login-panels"><RolePanel role="teacher" onRegister={() => setRegisterOpen(true)} /><div className="login-divider"><span>or</span></div><RolePanel role="student" onRegister={() => undefined} /></div><button className="login-how-it-works" onClick={() => setTutorialOpen(true)}><Sparkles size={15} />See how it works <ArrowRight size={14} /></button><HowItWorks role="general" isOpen={tutorialOpen} onClose={() => setTutorialOpen(false)} /><Dialog open={registerOpen} onOpenChange={setRegisterOpen}><DialogContent><DialogHeader><DialogTitle>Create a teacher account</DialogTitle><DialogDescription>Set up your educator access, then continue through Mosaic’s secure login.</DialogDescription></DialogHeader><form className="register-form" onSubmit={register}><label>Full name<Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Aida Rahman" /></label><label>Email<Input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="teacher@school.edu" /></label><label>Password<Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="At least 8 characters" /></label><label>Confirm password<Input value={confirm} onChange={(event) => setConfirm(event.target.value)} type="password" placeholder="Repeat your password" /></label>{registerError && <Alert variant="destructive"><AlertDescription>{registerError}</AlertDescription></Alert>}<Button type="submit" disabled={registerBusy}>{registerBusy ? <><Loader2 className="animate-spin" size={15} />Creating…</> : "Create teacher account"}</Button></form></DialogContent></Dialog></main>;
 }
