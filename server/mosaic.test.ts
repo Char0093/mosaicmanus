@@ -72,4 +72,13 @@ describe("mosaic classroom contracts", () => {
     expect(studentNotifications.every((item) => item.audience === "student")).toBe(true);
     expect(perks.length).toBeGreaterThan(0);
   });
+
+  it("returns completed peer tutoring sessions for teacher recognition", async () => {
+    const caller = appRouter.createCaller(createPublicContext());
+    const sessions = await caller.mosaic.peerTutoringRecognition();
+
+    expect(sessions.length).toBeGreaterThan(0);
+    expect(sessions[0]).toMatchObject({ status: "completed", tutorName: "Adam Ibrahim", tuteeName: "Hana Yusof" });
+    expect(sessions[0]?.misconceptionName).toBeTruthy();
+  });
 });

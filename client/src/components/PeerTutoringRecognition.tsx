@@ -1,0 +1,9 @@
+import { Award, Check, Star } from "lucide-react";
+import { trpc } from "@/lib/trpc";
+
+export default function PeerTutoringRecognition() {
+  const sessions = trpc.mosaic.peerTutoringRecognition.useQuery(undefined, { refetchInterval: 10000 });
+  const commend = trpc.mosaic.commendPeerTutoringSession.useMutation({ onSuccess: () => sessions.refetch() });
+  if (sessions.isLoading) return <section className="peer-recognition"><div className="eyebrow"><Award size={14} />Peer Tutoring Recognition</div><p className="peer-recognition__empty">Checking for completed peer tutoring…</p></section>;
+  return <section className="peer-recognition"><div className="peer-recognition__heading"><div><div className="eyebrow"><Award size={14} />Peer Tutoring Recognition</div><h2>Notice the learners who lift others.</h2></div><span className="peer-recognition__count">{sessions.data?.length ?? 0} completed</span></div>{sessions.data?.length ? <div className="peer-recognition__list">{sessions.data.map((session) => <article className={session.teacherCommended ? "peer-recognition__item peer-recognition__item--commended" : "peer-recognition__item"} key={session.id}><div className="peer-recognition__icon"><Star size={16} /></div><div className="peer-recognition__copy"><p><b>{session.tutorName}</b> helped <b>{session.tuteeName}</b> with <strong>{session.misconceptionName}</strong> today.</p><small>Completed {new Date(session.completedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</small></div><button className="btn btn--soft peer-recognition__button" disabled={session.teacherCommended || commend.isPending} onClick={() => commend.mutate({ id: session.id })}>{session.teacherCommended ? <><Check size={14} />Marked</> : "Mark for recognition ⭐"}</button></article>)}</div> : <p className="peer-recognition__empty">Completed peer tutoring sessions will appear here for a quick shout-out in class.</p>}</section>;
+}

@@ -1,5 +1,5 @@
 import { and, asc, desc, eq } from "drizzle-orm";
-import { answers, chapters, classroomAccess, classrooms, learners, milestones, notifications, pulseSessions, quizzes, tutorPerks } from "../drizzle/schema";
+import { answers, chapters, classroomAccess, classrooms, learners, milestones, notifications, peerTutoringSessions, pulseSessions, quizzes, tutorPerks } from "../drizzle/schema";
 import { CLASSROOM, DEMO_LEARNERS, type AnswerInsight, type Learner, type PulseQuestion } from "../shared/mosaic";
 import { getDb } from "./db";
 
@@ -65,7 +65,14 @@ export async function ensureMosaicData() {
           confusedWrongCount: learner.confusedWrongCount ?? 0,
           clearedAt: learner.clearedAt ? new Date(learner.clearedAt) : null,
           recent: learner.recent,
-        })));
+        }))); 
+      }
+      const existingPeerSessions = await db.select().from(peerTutoringSessions).where(eq(peerTutoringSessions.classroomId, classroom.id)).limit(1);
+      if (existingPeerSessions.length === 0) {
+        const peerLearners = await db.select().from(learners).where(eq(learners.classroomId, classroom.id));
+        const tutor = peerLearners.find((learner) => learner.externalId === "s17");
+        const tutee = peerLearners.find((learner) => learner.externalId === "s6");
+        if (tutor && tutee) await db.insert(peerTutoringSessions).values({ classroomId: classroom.id, tutorLearnerId: tutor.id, tuteeLearnerId: tutee.id, misconceptionName: "Mass and weight are the same thing", status: "completed", teacherCommended: false, completedAt: new Date() });
       }
     })().catch((error) => { seedPromise = null; console.warn("[Mosaic DB] Demo seed unavailable; continuing with server fallback.", error); });
   }
@@ -323,5 +330,24 @@ export async function getTutorPerks() {
 export async function claimTutorPerk(id: string) {
   const db = await getDb();
   if (db && /^\d+$/.test(id)) await db.update(tutorPerks).set({ status: "claimed" }).where(eq(tutorPerks.id, Number(id)));
+  return { success: true, id };
+}
+
+
+const demoPeerRecognition = [{ id: "demo-peer-1", tutorName: "Adam Ibrahim", tuteeName: "Hana Yusof", misconceptionName: "Mass and weight are the same thing", status: "completed" as const, teacherCommended: false, completedAt: new Date().toISOString() }];
+
+export async function getPeerTutoringRecognition() {
+  const { db, classroom } = await getClassroomRow();
+  if (!db || !classroom) return demoPeerRecognition;
+  const rows = await db.select().from(peerTutoringSessions).where(and(eq(peerTutoringSessions.classroomId, classroom.id), eq(peerTutoringSessions.status, "completed")));
+  if (!rows.length) return [];
+  const learnerRows = await db.select().from(learners).where(eq(learners.classroomId, classroom.id));
+  const names = new Map(learnerRows.map((learner) => [learner.id, learner.name]));
+  return rows.map((row) => ({ id: String(row.id), tutorName: names.get(row.tutorLearnerId) ?? "A peer tutor", tuteeName: names.get(row.tuteeLearnerId) ?? "a classmate", misconceptionName: row.misconceptionName, status: row.status, teacherCommended: row.teacherCommended, completedAt: row.completedAt?.toISOString() ?? row.createdAt.toISOString() }));
+}
+
+export async function commendPeerTutoringSession(id: string) {
+  const db = await getDb();
+  if (db && /^\d+$/.test(id)) await db.update(peerTutoringSessions).set({ teacherCommended: true }).where(eq(peerTutoringSessions.id, Number(id)));
   return { success: true, id };
 }

@@ -16,6 +16,7 @@ import {
   getLearnerProfile,
   getLiveSession,
   getNotifications,
+  getPeerTutoringRecognition,
   getStudentAnalytics,
   launchLiveSession,
   overrideLearnerMisconception,
@@ -23,6 +24,7 @@ import {
   getTutorPerks,
   getWorkspace,
   markNotificationRead,
+  commendPeerTutoringSession,
 } from "./mosaicDb";
 import { CLASSROOM, DEMO_LEARNERS, PULSE_QUESTIONS, tierMeta, type Learner } from "../shared/mosaic";
 
@@ -132,6 +134,8 @@ export const appRouter = router({
       } catch (error) { console.warn("[Mosaic scanner] scan failed", error); return { results: [], unmatched_names: [], total_slips_detected: 0, processed_at: new Date().toISOString(), error: "scan_failed", message: "Could not read the slips clearly. Try better lighting or a steadier image." }; }
     }),
     confirmScan: publicProcedure.input(z.object({ results: z.array(z.object({ matched_student_id: z.string().nullable(), answers: z.record(z.string(), z.union([z.enum(["A", "B", "C", "D"]), z.null()])) })), correctAnswers: z.record(z.string(), z.enum(["A", "B", "C", "D"])) })).mutation(async ({ input }) => { let processed = 0; for (const result of input.results) { if (!result.matched_student_id) continue; for (const [questionId, option] of Object.entries(result.answers)) { if (!option) continue; const correct = option === input.correctAnswers[questionId]; const classification = classifyAnswer(option, correct); await persistAnswer({ learnerId: result.matched_student_id, option, correct, confidence: "unsure", feedback: deterministicFeedback(correct), questionId, ...classification }); } processed += 1; } return { processed }; }),
+    peerTutoringRecognition: publicProcedure.query(() => getPeerTutoringRecognition()),
+    commendPeerTutoringSession: publicProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => commendPeerTutoringSession(input.id)),
     workspace: publicProcedure.query(async () => getWorkspace()),
     openClassroom: publicProcedure.input(z.object({ name: z.string().min(3).max(160), subject: z.string().min(2).max(120), topics: z.array(z.string().min(2)).min(1).max(12) })).mutation(({ input }) => createClassroom(input)),
     createChapter: publicProcedure.input(z.object({ title: z.string().min(2).max(180), description: z.string().min(5).max(500), published: z.boolean().default(false) })).mutation(({ input }) => createChapter(input)),

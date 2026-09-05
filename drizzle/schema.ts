@@ -52,6 +52,10 @@ export const tutorPerks = mysqlTable("tutorPerks", {
   id: int("id").autoincrement().primaryKey(), code: varchar("code", { length: 50 }).notNull().unique(), title: varchar("title", { length: 160 }).notNull(), description: text("description").notNull(), status: mysqlEnum("status", ["available", "claimed"]).notNull().default("available"), createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+export const peerTutoringSessions = mysqlTable("peerTutoringSessions", {
+  id: int("id").autoincrement().primaryKey(), classroomId: int("classroomId").notNull().references(() => classrooms.id, { onDelete: "cascade" }), tutorLearnerId: int("tutorLearnerId").notNull().references(() => learners.id, { onDelete: "cascade" }), tuteeLearnerId: int("tuteeLearnerId").notNull().references(() => learners.id, { onDelete: "cascade" }), misconceptionName: varchar("misconceptionName", { length: 180 }).notNull(), status: mysqlEnum("status", ["in_progress", "completed"]).notNull().default("in_progress"), teacherCommended: boolean("teacher_commended").notNull().default(false), completedAt: timestamp("completedAt"), createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({ peerClassIndex: index("peer_tutoring_class_idx").on(table.classroomId), peerStatusIndex: index("peer_tutoring_status_idx").on(table.status) }));
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Classroom = typeof classrooms.$inferSelect;
@@ -63,3 +67,4 @@ export type ChapterRow = typeof chapters.$inferSelect;
 export type QuizRow = typeof quizzes.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
 export type TutorPerkRow = typeof tutorPerks.$inferSelect;
+export type PeerTutoringSessionRow = typeof peerTutoringSessions.$inferSelect;
