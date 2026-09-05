@@ -3,19 +3,20 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import KioskExperience from "./components/KioskExperience";
-import MosaicDashboard from "./components/MosaicDashboard";
-import EducatorWorkspacePage from "./pages/EducatorWorkspacePage";
 import LiveJoinPage from "./pages/LiveJoinPage";
+import LoginLandingPage from "./pages/LoginLandingPage";
+import MosaicDashboard from "./components/MosaicDashboard";
 import RoadmapPage from "./pages/RoadmapPage";
 import RoleLoginPage from "./pages/RoleLoginPage";
 import StudentAnalytics from "./pages/StudentAnalytics";
 import StudentDashboard from "./pages/StudentDashboard";
 import TutorPerksPage from "./pages/TutorPerksPage";
+import EducatorWorkspacePage from "./pages/EducatorWorkspacePage";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 function Router() {
   return <Switch>
-    <Route path="/" component={MosaicDashboard} />
+    <Route path="/" component={LoginLandingPage} />
     <Route path="/teacher" component={MosaicDashboard} />
     <Route path="/educator" component={EducatorWorkspacePage} />
     <Route path="/login/educator"><RoleLoginPage role="educator" /></Route>
@@ -27,7 +28,7 @@ function Router() {
     <Route path="/kiosk" component={KioskExperience} />
     <Route path="/join/:code" component={LiveJoinPage} />
     <Route path="/roadmap" component={RoadmapPage} />
-    <Route component={MosaicDashboard} />
+    <Route component={LoginLandingPage} />
   </Switch>;
 }
 
