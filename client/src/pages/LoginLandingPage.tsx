@@ -18,19 +18,32 @@ function RolePanel({ role, onRegister }: { role: PanelRole; onRegister: () => vo
   const [focused, setFocused] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [roleIntent] = useState<PanelRole | null>(() => {
+    const saved = localStorage.getItem("mosaic-role-intent");
+    const startedAt = Number(localStorage.getItem("mosaic-role-intent-at") ?? 0);
+    const isRecent = startedAt > 0 && Date.now() - startedAt < 10 * 60 * 1000;
+    if (!isRecent) {
+      localStorage.removeItem("mosaic-role-intent");
+      localStorage.removeItem("mosaic-role-intent-at");
+    }
+    return isRecent && (saved === "teacher" || saved === "student") ? saved : null;
+  });
   const teacher = role === "teacher";
 
   useEffect(() => {
-    if (!auth.user || busy) return;
+    if (!auth.user || roleIntent !== role) return;
     const actualRole = auth.user.role;
     const roleMismatch = teacher ? actualRole === "student" : actualRole === "educator";
     if (roleMismatch) {
-      setBusy(false);
       setError(teacher ? "This account is registered as a student. Please use the student panel." : "This account is registered as a teacher. Please use the teacher panel.");
+      localStorage.removeItem("mosaic-role-intent");
+      localStorage.removeItem("mosaic-role-intent-at");
       return;
     }
+    localStorage.removeItem("mosaic-role-intent");
+    localStorage.removeItem("mosaic-role-intent-at");
     navigate(teacher ? "/teacher" : "/student");
-  }, [auth.user, busy, navigate, teacher]);
+  }, [auth.user, navigate, role, roleIntent, teacher]);
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -41,6 +54,7 @@ function RolePanel({ role, onRegister }: { role: PanelRole; onRegister: () => vo
     }
     setBusy(true);
     localStorage.setItem("mosaic-role-intent", role);
+    localStorage.setItem("mosaic-role-intent-at", String(Date.now()));
     startLogin();
   };
 
@@ -65,6 +79,7 @@ export default function LoginLandingPage() {
     setRegisterError("");
     setRegisterBusy(true);
     localStorage.setItem("mosaic-role-intent", "teacher");
+    localStorage.setItem("mosaic-role-intent-at", String(Date.now()));
     startLogin();
   };
 
