@@ -27,6 +27,11 @@ import {
   getWorkspace,
   markNotificationRead,
   commendPeerTutoringSession,
+  createTeacherQuestion,
+  deleteTeacherQuestion,
+  listMisconceptionsForTopic,
+  listTeacherQuestions,
+  setTeacherQuestionActive,
 } from "./mosaicDb";
 import { CLASSROOM, DEMO_LEARNERS, PULSE_QUESTIONS, tierMeta, type Learner } from "../shared/mosaic";
 
@@ -41,11 +46,11 @@ function cohortSummary(currentLearners: Learner[]) {
   return { counts, massWeightCount, confidentErrors, confusedAttempts };
 }
 
-function classroomForFrontend(row?: { slug: string; name: string; subject: string; kioskCode: string; topics: string } | null) {
+function classroomForFrontend(row?: { slug: string; name: string; subject: string; yearLevel?: string | null; kioskCode: string; topics: string } | null) {
   if (!row) return CLASSROOM;
   let topics = CLASSROOM.topics;
   try { const parsed = JSON.parse(row.topics); if (Array.isArray(parsed) && parsed.every((topic) => typeof topic === "string")) topics = parsed; } catch { /* fallback */ }
-  return { id: row.slug, name: row.name, subject: row.subject, kioskCode: row.kioskCode, topics };
+  return { id: row.slug, name: row.name, subject: row.subject, yearLevel: row.yearLevel ?? "", kioskCode: row.kioskCode, topics };
 }
 
 async function readClassroomState() {
@@ -82,6 +87,30 @@ async function generateAdaptiveFeedback(input: { subject: string; topic: string;
   return fallback;
 }
 
+const QUESTION_PROMPT = `You are a curriculum-aware quiz question writer for Mosaic Classroom.\nSubject: {subject}\nTopic: {topic}\n- Year level: {year_level}\n  If Form 1-2 or Year 7-8: use simple numbers, local everyday contexts (canteen, playground, home).\n  If Form 3-4 or Year 9-10: use moderate complexity, introduce some technical vocabulary.\n  If Form 5 or Year 11-12: use full technical language, exam-style phrasing, multi-step scenarios.\n- Year/Form level: {year_level} (calibrate language complexity, number sizes, and real-world contexts to be appropriate for this age group)\nReturn one age-appropriate multiple-choice question as strict JSON with prompt, options A-D, correct_option, and explanation.`;
+
+const PREP_PLAN_PROMPT = `You are a classroom planning assistant. Create an age-appropriate lesson preparation plan.\nSubject: {subject}\nTopic: {topic}\n- Year/Form level: {year_level} (calibrate language complexity, number sizes, examples, and activities to this age group).\nReturn strict JSON with objective, activities, checks_for_understanding, and differentiation.`;
+
+async function generateQuestionWithGemini(input: { subject: string; topic: string; yearLevel?: string }) {
+  const state = await readClassroomState();
+  const yearLevel = input.yearLevel?.trim() || ("yearLevel" in state.classroom ? state.classroom.yearLevel : "") || "not specified";
+  const prompt = QUESTION_PROMPT.replaceAll("{subject}", input.subject).replaceAll("{topic}", input.topic).replaceAll("{year_level}", yearLevel);
+  const result = await invokeLLM({ model: "gemini-3-flash-preview", messages: [{ role: "user", content: prompt }], response_format: { type: "json_schema", json_schema: { name: "quiz_question", strict: true, schema: { type: "object", properties: { prompt: { type: "string" }, options: { type: "object", properties: { A: { type: "string" }, B: { type: "string" }, C: { type: "string" }, D: { type: "string" } }, required: ["A", "B", "C", "D"], additionalProperties: false }, correct_option: { type: "string", enum: ["A", "B", "C", "D"] }, explanation: { type: "string" } }, required: ["prompt", "options", "correct_option", "explanation"], additionalProperties: false } } } });
+  const content = result.choices[0]?.message?.content;
+  if (typeof content !== "string") throw new Error("Gemini returned no question content");
+  return JSON.parse(content);
+}
+
+async function generatePrepPlanWithGemini(input: { subject: string; topic: string; yearLevel?: string }) {
+  const state = await readClassroomState();
+  const yearLevel = input.yearLevel?.trim() || ("yearLevel" in state.classroom ? state.classroom.yearLevel : "") || "not specified";
+  const prompt = PREP_PLAN_PROMPT.replaceAll("{subject}", input.subject).replaceAll("{topic}", input.topic).replaceAll("{year_level}", yearLevel);
+  const result = await invokeLLM({ model: "gemini-3-flash-preview", messages: [{ role: "user", content: prompt }], response_format: { type: "json_schema", json_schema: { name: "prep_plan", strict: true, schema: { type: "object", properties: { objective: { type: "string" }, activities: { type: "array", items: { type: "string" } }, checks_for_understanding: { type: "array", items: { type: "string" } }, differentiation: { type: "array", items: { type: "string" } } }, required: ["objective", "activities", "checks_for_understanding", "differentiation"], additionalProperties: false } } } });
+  const content = result.choices[0]?.message?.content;
+  if (typeof content !== "string") throw new Error("Gemini returned no prep plan content");
+  return JSON.parse(content);
+}
+
 function fuzzyLearner(name: string, learners: Learner[]) {
   const normalized = name.toLowerCase().replace(/[^a-z0-9]/g, "");
   return learners.find((learner) => learner.name.toLowerCase().replace(/[^a-z0-9]/g, "") === normalized)
@@ -112,7 +141,7 @@ export const appRouter = router({
       const learner = profile?.learner ?? fallbackLearners.find((item) => item.id === studentId) ?? fallbackLearners[5];
       return { classroom: CLASSROOM, learner, answers: profile?.answers ?? [], masteryMap: CLASSROOM.topics.map((topic, index) => ({ topic, mastery: Math.max(25, Math.min(100, learner.mastery + (index === 0 ? 0 : index === 1 ? 9 : -6))), cleared: Boolean(learner.clearedAt && index === 0) })) };
     }),
-    studentAnalytics: publicProcedure.input(z.object({ learnerId: z.string().default("s6") })).query(async () => getStudentAnalytics("s6") ?? { learner: fallbackLearners[5], answers: [], topicData: [], timeline: [], matrix: { knewCorrect: 0, knewWrong: 0, unsureCorrect: 0, unsureWrong: 0 }, strongest: "Forces & Motion", opportunity: "Matter & Properties" }),
+    studentAnalytics: publicProcedure.input(z.object({ learnerId: z.string().default("s6") })).query(async () => (await getStudentAnalytics("s6")) ?? { learner: fallbackLearners[5], answers: [], topicData: [{ topic: "Forces & Motion", current: fallbackLearners[5].mastery, mastery_score: fallbackLearners[5].mastery, previous: Math.max(0, fallbackLearners[5].mastery - 11) }, { topic: "Living Things", current: fallbackLearners[5].mastery + 8, mastery_score: fallbackLearners[5].mastery + 8, previous: Math.max(0, fallbackLearners[5].mastery - 2) }, { topic: "Matter & Properties", current: Math.max(0, fallbackLearners[5].mastery - 7), mastery_score: Math.max(0, fallbackLearners[5].mastery - 7), previous: Math.max(0, fallbackLearners[5].mastery - 17) }], sessionTrend: [{ session: "S1", "Forces & Motion": fallbackLearners[5].mastery, "Living Things": fallbackLearners[5].mastery + 8, "Matter & Properties": Math.max(0, fallbackLearners[5].mastery - 7) }], misconceptionFrequency: [], clearedThisWeek: 0, timeline: [{ session: "S1", active: 1, cleared: false }], matrix: { knewCorrect: 0, knewWrong: 0, unsureCorrect: 0, unsureWrong: 0 }, strongest: "Forces & Motion", opportunity: "Matter & Properties" }),
     learnerProfile: publicProcedure.input(z.object({ learnerId: z.string() })).query(async ({ input }) => {
       const profile = await getLearnerProfile(input.learnerId);
       return profile ?? { learner: fallbackLearners.find((item) => item.id === input.learnerId) ?? fallbackLearners[0], answers: [] };
@@ -144,11 +173,18 @@ export const appRouter = router({
     openClassroom: publicProcedure.input(z.object({ name: z.string().min(3).max(160), subject: z.string().min(2).max(120), topics: z.array(z.string().min(2)).min(1).max(12) })).mutation(({ input }) => createClassroom(input)),
     createChapter: publicProcedure.input(z.object({ title: z.string().min(2).max(180), description: z.string().min(5).max(500), published: z.boolean().default(false) })).mutation(({ input }) => createChapter(input)),
     uploadQuiz: publicProcedure.input(z.object({ title: z.string().min(2).max(180), chapterId: z.string().nullable().optional(), sourceFilename: z.string().max(240).optional(), questions: z.array(z.object({ id: z.string(), prompt: z.string(), options: z.array(z.string()).min(2).max(6) })).min(1).max(50), published: z.boolean().default(false) })).mutation(({ input }) => createQuiz(input)),
+    teacherQuestions: publicProcedure.input(z.object({ topic: z.string().optional() }).optional()).query(({ input }) => listTeacherQuestions(input?.topic)),
+    misconceptionsForTopic: publicProcedure.input(z.object({ topic: z.string().min(1) })).query(({ input }) => listMisconceptionsForTopic(input.topic)),
+    createTeacherQuestion: publicProcedure.input(z.object({ topic: z.string().min(1).max(160), questionText: z.string().trim().min(10).max(2000), options: z.object({ A: z.string().trim().min(1).max(500), B: z.string().trim().min(1).max(500), C: z.string().trim().min(1).max(500), D: z.string().trim().min(1).max(500) }), correctOption: z.enum(["A", "B", "C", "D"]), misconceptionHints: z.record(z.string(), z.number().int().nullable()).optional() })).mutation(({ input, ctx }) => createTeacherQuestion(input, ctx.user?.id)),
+    setTeacherQuestionActive: publicProcedure.input(z.object({ id: z.string(), active: z.boolean() })).mutation(({ input }) => setTeacherQuestionActive(input.id, input.active)),
+    deleteTeacherQuestion: publicProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => deleteTeacherQuestion(input.id)),
     notifications: publicProcedure.input(z.object({ audience: z.enum(["educator", "tutor", "student"]), learnerId: z.string().optional() })).query(({ input }) => getNotifications(input.audience, input.learnerId)),
     markNotificationRead: publicProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => markNotificationRead(input.id)),
     tutorPerks: publicProcedure.query(() => getTutorPerks()),
     claimTutorPerk: publicProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => claimTutorPerk(input.id)),
     groups: publicProcedure.query(async () => { const state = await readClassroomState(); return (Object.keys(tierMeta) as Array<keyof typeof tierMeta>).map((tier) => ({ tier, ...tierMeta[tier], learners: state.learners.filter((learner) => learner.tier === tier) })); }),
+    generateQuestion: publicProcedure.input(z.object({ subject: z.string().min(1), topic: z.string().min(1), yearLevel: z.string().optional() })).mutation(({ input }) => generateQuestionWithGemini(input)),
+    prepPlan: publicProcedure.input(z.object({ subject: z.string().min(1), topic: z.string().min(1), yearLevel: z.string().optional() })).mutation(({ input }) => generatePrepPlanWithGemini(input)),
     tutor: publicProcedure.input(z.object({ message: z.string().min(1).max(400) })).mutation(({ input }) => ({ response: input.message.toLowerCase().includes("weight") || input.message.toLowerCase().includes("mass") ? "Try this: imagine taking a backpack to the Moon. Its mass—how much matter is in it—stays the same. Its weight changes because the Moon’s gravity pulls less strongly." : "Tell me which part feels confusing. We can sort what stays the same from what changes, one idea at a time." })),
   }),
 });

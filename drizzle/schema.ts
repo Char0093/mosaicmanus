@@ -1,4 +1,4 @@
-import { boolean, index, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { boolean, index, int, json, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -60,6 +60,23 @@ export const misconceptions = mysqlTable("misconceptions", {
   id: int("id").autoincrement().primaryKey(), subject: varchar("subject", { length: 120 }).notNull(), topic: varchar("topic", { length: 160 }).notNull(), name: varchar("name", { length: 180 }).notNull(), explanation: text("explanation").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({ misconceptionTopicIndex: index("misconceptions_subject_topic_idx").on(table.subject, table.topic) }));
 
+export const teacherQuestions = mysqlTable("teacherQuestions", {
+  id: int("id").autoincrement().primaryKey(),
+  teacherId: int("teacherId").references(() => users.id, { onDelete: "cascade" }),
+  classroomId: int("classroomId").notNull().references(() => classrooms.id, { onDelete: "cascade" }),
+  subject: varchar("subject", { length: 120 }).notNull(),
+  topic: varchar("topic", { length: 160 }).notNull(),
+  questionText: text("questionText").notNull(),
+  optionA: text("optionA").notNull(),
+  optionB: text("optionB").notNull(),
+  optionC: text("optionC").notNull(),
+  optionD: text("optionD").notNull(),
+  correctOption: mysqlEnum("correctOption", ["A", "B", "C", "D"]).notNull(),
+  misconceptionHints: json("misconceptionHints").$type<Record<string, number | null>>().default({}),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({ teacherQuestionClassTopicIndex: index("teacher_questions_class_topic_idx").on(table.classroomId, table.topic), teacherQuestionTeacherIndex: index("teacher_questions_teacher_idx").on(table.teacherId) }));
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Classroom = typeof classrooms.$inferSelect;
@@ -73,3 +90,4 @@ export type NotificationRow = typeof notifications.$inferSelect;
 export type TutorPerkRow = typeof tutorPerks.$inferSelect;
 export type PeerTutoringSessionRow = typeof peerTutoringSessions.$inferSelect;
 export type MisconceptionRow = typeof misconceptions.$inferSelect;
+export type TeacherQuestionRow = typeof teacherQuestions.$inferSelect;

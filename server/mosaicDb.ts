@@ -1,5 +1,5 @@
 import { and, asc, desc, eq } from "drizzle-orm";
-import { answers, chapters, classroomAccess, classrooms, learners, milestones, misconceptions, notifications, peerTutoringSessions, pulseSessions, quizzes, tutorPerks } from "../drizzle/schema";
+import { answers, chapters, classroomAccess, classrooms, learners, milestones, misconceptions, notifications, peerTutoringSessions, pulseSessions, quizzes, teacherQuestions, tutorPerks } from "../drizzle/schema";
 import { CLASSROOM, DEMO_LEARNERS, type AnswerInsight, type Learner, type PulseQuestion } from "../shared/mosaic";
 import { getDb } from "./db";
 
@@ -392,5 +392,53 @@ export async function getPeerTutoringRecognition() {
 export async function commendPeerTutoringSession(id: string) {
   const db = await getDb();
   if (db && /^\d+$/.test(id)) await db.update(peerTutoringSessions).set({ teacherCommended: true }).where(eq(peerTutoringSessions.id, Number(id)));
+  return { success: true, id };
+}
+
+export type TeacherQuestionInput = {
+  topic: string; questionText: string; options: { A: string; B: string; C: string; D: string };
+  correctOption: "A" | "B" | "C" | "D"; misconceptionHints?: Record<string, number | null>;
+};
+
+function teacherQuestionSummary(row: typeof teacherQuestions.$inferSelect) {
+  return { id: String(row.id), topic: row.topic, questionText: row.questionText, options: { A: row.optionA, B: row.optionB, C: row.optionC, D: row.optionD }, correctOption: row.correctOption, misconceptionHints: row.misconceptionHints ?? {}, isActive: row.isActive, createdAt: row.createdAt.toISOString(), isTeacherQuestion: true as const };
+}
+
+async function activeClassroomForTeacher() {
+  const { db, classroom } = await getClassroomRow();
+  return { db, classroom };
+}
+
+export async function listTeacherQuestions(topic?: string) {
+  const { db, classroom } = await activeClassroomForTeacher();
+  if (!db || !classroom) return [];
+  const rows = await db.select().from(teacherQuestions).where(topic ? and(eq(teacherQuestions.classroomId, classroom.id), eq(teacherQuestions.topic, topic)) : eq(teacherQuestions.classroomId, classroom.id)).orderBy(desc(teacherQuestions.createdAt));
+  return rows.map(teacherQuestionSummary);
+}
+
+export async function listMisconceptionsForTopic(topic: string) {
+  const { db, classroom } = await activeClassroomForTeacher();
+  if (!db || !classroom) return [];
+  const rows = await db.select().from(misconceptions).where(and(eq(misconceptions.subject, classroom.subject), eq(misconceptions.topic, topic))).orderBy(asc(misconceptions.name));
+  return rows.map((row) => ({ id: row.id, name: row.name, explanation: row.explanation }));
+}
+
+export async function createTeacherQuestion(input: TeacherQuestionInput, teacherId?: number) {
+  const { db, classroom } = await activeClassroomForTeacher();
+  if (!db || !classroom) return { id: `local-${Date.now()}`, ...input, isActive: true, createdAt: new Date().toISOString(), isTeacherQuestion: true as const };
+  await db.insert(teacherQuestions).values({ teacherId: teacherId ?? null, classroomId: classroom.id, subject: classroom.subject, topic: input.topic, questionText: input.questionText, optionA: input.options.A, optionB: input.options.B, optionC: input.options.C, optionD: input.options.D, correctOption: input.correctOption, misconceptionHints: input.misconceptionHints ?? {}, isActive: true });
+  const row = (await db.select().from(teacherQuestions).where(and(eq(teacherQuestions.classroomId, classroom.id), eq(teacherQuestions.questionText, input.questionText))).orderBy(desc(teacherQuestions.id)).limit(1))[0];
+  return row ? teacherQuestionSummary(row) : null;
+}
+
+export async function setTeacherQuestionActive(id: string, active: boolean) {
+  const db = await getDb();
+  if (db && /^\d+$/.test(id)) await db.update(teacherQuestions).set({ isActive: active }).where(eq(teacherQuestions.id, Number(id)));
+  return { success: true, id, isActive: active };
+}
+
+export async function deleteTeacherQuestion(id: string) {
+  const db = await getDb();
+  if (db && /^\d+$/.test(id)) await db.delete(teacherQuestions).where(eq(teacherQuestions.id, Number(id)));
   return { success: true, id };
 }
