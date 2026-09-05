@@ -20,6 +20,8 @@ import {
   getPeerTutoringRecognition,
   listTeacherClassrooms,
   getStudentAnalytics,
+  getStudentQuizReview,
+  startRevisitSession,
   launchLiveSession,
   overrideLearnerMisconception,
   persistAnswer,
@@ -91,10 +93,14 @@ const QUESTION_PROMPT = `You are a curriculum-aware quiz question writer for Mos
 
 const PREP_PLAN_PROMPT = `You are a classroom planning assistant. Create an age-appropriate lesson preparation plan.\nSubject: {subject}\nTopic: {topic}\n- Year/Form level: {year_level} (calibrate language complexity, number sizes, examples, and activities to this age group).\nReturn strict JSON with objective, activities, checks_for_understanding, and differentiation.`;
 
-async function generateQuestionWithGemini(input: { subject: string; topic: string; yearLevel?: string }) {
+async function generateQuestionWithGemini(input: { subject: string; topic: string; yearLevel?: string; learnerId?: string }) {
   const state = await readClassroomState();
   const yearLevel = input.yearLevel?.trim() || ("yearLevel" in state.classroom ? state.classroom.yearLevel : "") || "not specified";
-  const prompt = QUESTION_PROMPT.replaceAll("{subject}", input.subject).replaceAll("{topic}", input.topic).replaceAll("{year_level}", yearLevel);
+  const profile = await getLearnerProfile(input.learnerId ?? "s6");
+  const tier = profile?.learner.tier ?? "green";
+  const tierGuidance = { red: { difficulty: "1 (easy)", target: profile?.learner.misconception ?? "highest persistence active misconception", style: "simple, concrete, single-step", instruction: "Use the most basic version of this concept. No multi-step problems. Use everyday objects." }, yellow: { difficulty: "2 (medium)", target: profile?.learner.misconception ?? "highest persistence active misconception", style: "procedural, 1-2 steps", instruction: "Probe the specific misconception directly. Design wrong options to surface this error." }, green: { difficulty: "2-3", target: "none", style: "application-based, real-world context", instruction: "Student has mastered the basics. Test application and transfer, not recall." }, blue: { difficulty: "3 (hard)", target: "none", style: "multi-step, real-world, cross-topic", instruction: "Challenge this student beyond the syllabus. Use unfamiliar contexts. Require reasoning." } }[tier];
+  const previousQuestions = (profile?.answers ?? []).filter((answer) => answer.questionId).slice(0, 10).map((answer) => answer.questionId);
+  const prompt = `${QUESTION_PROMPT.replaceAll("{subject}", input.subject).replaceAll("{topic}", input.topic).replaceAll("{year_level}", yearLevel)}\nSTRICT PERFORMANCE PARAMETERS:\n- Tier: ${tier}\n- Difficulty: ${tierGuidance.difficulty}\n- Target misconception: ${tierGuidance.target}\n- Question style: ${tierGuidance.style}\n- Instruction: ${tierGuidance.instruction}\n- Previous question IDs/text references to avoid repeating: ${JSON.stringify(previousQuestions)}\nNever repeat a previous question.`;
   const result = await invokeLLM({ model: "gemini-3-flash-preview", messages: [{ role: "user", content: prompt }], response_format: { type: "json_schema", json_schema: { name: "quiz_question", strict: true, schema: { type: "object", properties: { prompt: { type: "string" }, options: { type: "object", properties: { A: { type: "string" }, B: { type: "string" }, C: { type: "string" }, D: { type: "string" } }, required: ["A", "B", "C", "D"], additionalProperties: false }, correct_option: { type: "string", enum: ["A", "B", "C", "D"] }, explanation: { type: "string" } }, required: ["prompt", "options", "correct_option", "explanation"], additionalProperties: false } } } });
   const content = result.choices[0]?.message?.content;
   if (typeof content !== "string") throw new Error("Gemini returned no question content");
@@ -141,6 +147,8 @@ export const appRouter = router({
       const learner = profile?.learner ?? fallbackLearners.find((item) => item.id === studentId) ?? fallbackLearners[5];
       return { classroom: CLASSROOM, learner, answers: profile?.answers ?? [], masteryMap: CLASSROOM.topics.map((topic, index) => ({ topic, mastery: Math.max(25, Math.min(100, learner.mastery + (index === 0 ? 0 : index === 1 ? 9 : -6))), cleared: Boolean(learner.clearedAt && index === 0) })) };
     }),
+    studentReview: publicProcedure.input(z.object({ learnerId: z.string().default("s6") })).query(({ input }) => getStudentQuizReview(input.learnerId)),
+    startRevisit: publicProcedure.input(z.object({ learnerId: z.string(), topic: z.string(), misconception: z.string().optional() })).mutation(({ input }) => startRevisitSession(input)),
     studentAnalytics: publicProcedure.input(z.object({ learnerId: z.string().default("s6") })).query(async () => (await getStudentAnalytics("s6")) ?? { learner: fallbackLearners[5], answers: [], topicData: [{ topic: "Forces & Motion", current: fallbackLearners[5].mastery, mastery_score: fallbackLearners[5].mastery, previous: Math.max(0, fallbackLearners[5].mastery - 11) }, { topic: "Living Things", current: fallbackLearners[5].mastery + 8, mastery_score: fallbackLearners[5].mastery + 8, previous: Math.max(0, fallbackLearners[5].mastery - 2) }, { topic: "Matter & Properties", current: Math.max(0, fallbackLearners[5].mastery - 7), mastery_score: Math.max(0, fallbackLearners[5].mastery - 7), previous: Math.max(0, fallbackLearners[5].mastery - 17) }], sessionTrend: [{ session: "S1", "Forces & Motion": fallbackLearners[5].mastery, "Living Things": fallbackLearners[5].mastery + 8, "Matter & Properties": Math.max(0, fallbackLearners[5].mastery - 7) }], misconceptionFrequency: [], clearedThisWeek: 0, timeline: [{ session: "S1", active: 1, cleared: false }], matrix: { knewCorrect: 0, knewWrong: 0, unsureCorrect: 0, unsureWrong: 0 }, strongest: "Forces & Motion", opportunity: "Matter & Properties" }),
     learnerProfile: publicProcedure.input(z.object({ learnerId: z.string() })).query(async ({ input }) => {
       const profile = await getLearnerProfile(input.learnerId);
@@ -183,7 +191,7 @@ export const appRouter = router({
     tutorPerks: publicProcedure.query(() => getTutorPerks()),
     claimTutorPerk: publicProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => claimTutorPerk(input.id)),
     groups: publicProcedure.query(async () => { const state = await readClassroomState(); return (Object.keys(tierMeta) as Array<keyof typeof tierMeta>).map((tier) => ({ tier, ...tierMeta[tier], learners: state.learners.filter((learner) => learner.tier === tier) })); }),
-    generateQuestion: publicProcedure.input(z.object({ subject: z.string().min(1), topic: z.string().min(1), yearLevel: z.string().optional() })).mutation(({ input }) => generateQuestionWithGemini(input)),
+    generateQuestion: publicProcedure.input(z.object({ subject: z.string().min(1), topic: z.string().min(1), yearLevel: z.string().optional(), learnerId: z.string().optional() })).mutation(({ input }) => generateQuestionWithGemini(input)),
     prepPlan: publicProcedure.input(z.object({ subject: z.string().min(1), topic: z.string().min(1), yearLevel: z.string().optional() })).mutation(({ input }) => generatePrepPlanWithGemini(input)),
     tutor: publicProcedure.input(z.object({ message: z.string().min(1).max(400) })).mutation(({ input }) => ({ response: input.message.toLowerCase().includes("weight") || input.message.toLowerCase().includes("mass") ? "Try this: imagine taking a backpack to the Moon. Its mass—how much matter is in it—stays the same. Its weight changes because the Moon’s gravity pulls less strongly." : "Tell me which part feels confusing. We can sort what stays the same from what changes, one idea at a time." })),
   }),

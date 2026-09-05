@@ -186,6 +186,29 @@ export async function launchLiveSession(joinCode: string) {
   return getLiveSession(joinCode);
 }
 
+export async function getStudentQuizReview(externalId: string) {
+  const profile = await getLearnerProfile(externalId);
+  const classroomState = await getClassroomRow();
+  const classroom = classroomState.classroom;
+  const answers = profile?.answers ?? [];
+  const topicForQuestion = (questionId: string) => questionId.toLowerCase().includes("living") || questionId === "q2" ? "Living Things" : questionId.toLowerCase().includes("matter") || questionId === "q3" ? "Matter & Properties" : "Forces & Motion";
+  const questionText = (questionId: string) => ({ q1: "Which statement best describes mass?", q2: "What changes between Earth and the Moon?", q3: "What tool measures weight?" } as Record<string, string>)[questionId] ?? "Question from your learning mission";
+  const grouped = new Map<string, typeof answers>();
+  answers.forEach((answer) => { const topic = topicForQuestion(answer.questionId); grouped.set(topic, [...(grouped.get(topic) ?? []), answer]); });
+  const topics = (classroom ? parseJson(classroom.topics, CLASSROOM.topics) : CLASSROOM.topics);
+  const topicReviews = topics.map((topic) => {
+    const topicAnswers = grouped.get(topic) ?? [];
+    const correct = topicAnswers.filter((answer) => answer.correct).length;
+    return { topic, totalQuestions: topicAnswers.length, accuracy: topicAnswers.length ? Math.round((correct / topicAnswers.length) * 100) : 0, mostCommonError: topicAnswers.find((answer) => !answer.correct)?.teacherOverrideMisconceptionId ?? null, questionsToRevisit: topicAnswers.filter((answer) => !answer.correct).length, sessions: topicAnswers.map((answer) => ({ id: String(answer.id), answeredAt: answer.createdAt, score: answer.correct ? 1 : 0, question: { id: answer.questionId, text: questionText(answer.questionId), selectedOption: answer.option, correct: answer.correct, correctOption: answer.questionId === "q1" ? "B" : answer.questionId === "q2" ? "C" : "B", confidence: answer.confidence, misconception: answer.correct ? null : answer.teacherOverrideMisconceptionId ?? "Mass and weight are the same thing" } })) };
+  });
+  const revisitQueue = topicReviews.flatMap((review) => review.sessions.filter((session) => !session.question.correct).map((session) => ({ ...session, topic: review.topic }))).slice(0, 5);
+  return { classroom: classroom ? { name: classroom.name, subject: classroom.subject } : { name: CLASSROOM.name, subject: CLASSROOM.subject }, topics: topicReviews, revisitQueue, hasHistory: answers.length > 0 };
+}
+
+export async function startRevisitSession(input: { learnerId: string; topic: string; misconception?: string }) {
+  return { success: true, learnerId: input.learnerId, topic: input.topic, misconception: input.misconception ?? null, startedAt: new Date().toISOString() };
+}
+
 export async function getStudentAnalytics(externalId: string) {
   const profile = await getLearnerProfile(externalId);
   if (!profile) return null;

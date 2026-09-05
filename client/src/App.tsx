@@ -14,6 +14,8 @@ import StudentAnalytics from "./pages/StudentAnalytics";
 import StudentDashboard from "./pages/StudentDashboard";
 import TutorPerksPage from "./pages/TutorPerksPage";
 import EducatorWorkspacePage from "./pages/EducatorWorkspacePage";
+import CreateQuizPage from "./pages/CreateQuizPage";
+import StudentQuizReview from "./pages/StudentQuizReview";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 function SessionRedirector() {
@@ -35,12 +37,14 @@ function Router() {
     <Route path="/" component={LoginLandingPage} />
     <Route path="/teacher" component={MosaicDashboard} />
     <Route path="/educator" component={EducatorWorkspacePage} />
+    <Route path="/teacher/quiz/create" component={CreateQuizPage} />
     <Route path="/login/educator"><RoleLoginPage role="educator" /></Route>
     <Route path="/login/tutor"><RoleLoginPage role="tutor" /></Route>
     <Route path="/login/student"><RoleLoginPage role="student" /></Route>
     <Route path="/tutor/perks" component={TutorPerksPage} />
     <Route path="/student" component={StudentDashboard} />
     <Route path="/student/analytics" component={StudentAnalytics} />
+    <Route path="/student/review" component={StudentQuizReview} />
     <Route path="/kiosk" component={KioskExperience} />
     <Route path="/join/:code" component={LiveJoinPage} />
     <Route path="/roadmap" component={RoadmapPage} />
