@@ -32,6 +32,9 @@ export const learners = mysqlTable("learners", {
   mastery: int("mastery").notNull().default(0),
   misconception: text("misconception"),
   flagged: boolean("flagged").notNull().default(false),
+  confidentWrongCount: int("confidentWrongCount").notNull().default(0),
+  confusedWrongCount: int("confusedWrongCount").notNull().default(0),
+  clearedAt: timestamp("clearedAt"),
   recent: varchar("recent", { length: 60 }).notNull().default("Just now"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({ classroomExternalIndex: uniqueIndex("learners_classroom_external_idx").on(table.classroomId, table.externalId), classroomIndex: index("learners_classroom_idx").on(table.classroomId) }));
@@ -45,11 +48,36 @@ export const answers = mysqlTable("answers", {
   correct: boolean("correct").notNull(),
   confidence: mysqlEnum("confidence", ["guessed", "unsure", "knew"]).notNull(),
   feedback: text("feedback").notNull(),
+  reasoning: text("reasoning"),
+  classifierConfidence: mysqlEnum("classifierConfidence", ["high", "medium", "low"]),
+  teacherOverrideMisconceptionId: varchar("teacherOverrideMisconceptionId", { length: 120 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({ answerClassIndex: index("answers_class_idx").on(table.classroomId), answerLearnerIndex: index("answers_learner_idx").on(table.learnerId) }));
+
+export const milestones = mysqlTable("milestones", {
+  id: int("id").autoincrement().primaryKey(),
+  classroomId: int("classroomId").notNull().references(() => classrooms.id, { onDelete: "cascade" }),
+  learnerId: int("learnerId").notNull().references(() => learners.id, { onDelete: "cascade" }),
+  misconceptionName: varchar("misconceptionName", { length: 180 }).notNull(),
+  subject: varchar("subject", { length: 120 }).notNull(),
+  topic: varchar("topic", { length: 160 }).notNull(),
+  clearedAt: timestamp("clearedAt").defaultNow().notNull(),
+}, (table) => ({ milestoneLearnerIndex: index("milestones_learner_idx").on(table.learnerId) }));
+
+export const pulseSessions = mysqlTable("pulseSessions", {
+  id: int("id").autoincrement().primaryKey(),
+  classroomId: int("classroomId").notNull().references(() => classrooms.id, { onDelete: "cascade" }),
+  joinCode: varchar("joinCode", { length: 12 }).notNull().unique(),
+  liveMode: boolean("liveMode").notNull().default(false),
+  launched: boolean("launched").notNull().default(false),
+  questions: text("questions").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Classroom = typeof classrooms.$inferSelect;
 export type LearnerRow = typeof learners.$inferSelect;
 export type AnswerRow = typeof answers.$inferSelect;
+export type MilestoneRow = typeof milestones.$inferSelect;
+export type PulseSessionRow = typeof pulseSessions.$inferSelect;

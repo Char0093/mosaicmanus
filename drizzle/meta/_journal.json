@@ -15,6 +15,13 @@
       "when": 1788595473397,
       "tag": "0001_minor_vengeance",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1788597161203,
+      "tag": "0002_jittery_power_pack",
+      "breakpoints": true
     }
   ]
 }

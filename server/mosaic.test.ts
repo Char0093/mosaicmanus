@@ -31,4 +31,24 @@ describe("mosaic classroom contracts", () => {
     if (valid.valid) expect(valid.learners).toHaveLength(20);
     expect(invalid).toEqual({ valid: false, message: "That class code does not match this classroom." });
   });
+
+  it("returns a student dashboard with a three-domain mastery map", async () => {
+    const caller = appRouter.createCaller(createPublicContext());
+    const result = await caller.mosaic.studentDashboard({ learnerId: "s6" });
+
+    expect(result.classroom.name).toBe("Form 2 Science");
+    expect(result.learner.name).toBe("Hana Yusof");
+    expect(result.masteryMap).toHaveLength(3);
+  });
+
+  it("returns the lightweight analytics sections and confidence matrix", async () => {
+    const caller = appRouter.createCaller(createPublicContext());
+    const result = await caller.mosaic.studentAnalytics({ learnerId: "s6" });
+
+    expect(result.topicData).toHaveLength(3);
+    expect(result.timeline.length).toBeGreaterThan(0);
+    expect(result.matrix).toHaveProperty("knewWrong");
+    expect(result.strongest).toBeTruthy();
+    expect(result.opportunity).toBeTruthy();
+  });
 });

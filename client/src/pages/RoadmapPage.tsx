@@ -1,0 +1,8 @@
+import { ArrowRight, Check, Layers3 } from "lucide-react";
+
+const phases = [
+  { label: "Phase 1 · Current build", tone: "current", items: ["Misconception diagnosis engine", "Adaptive learning paths", "Teacher Action Card", "Real-time heatmap", "Kiosk mode", "Paper scanner", "Offline sync", "Explainable AI classifications", "Confidence + transfer verification", "Teacher override"] },
+  { label: "Phase 2 · Next quarter", tone: "next", items: ["HOTS open-ended question engine", "Full offline-first PWA inference", "DELIMa national LMS integration", "Administrator school-wide analytics", "Full Bahasa Melayu generation"] },
+  { label: "Phase 3 · Scale", tone: "scale", items: ["District-wide misconception analytics", "Curriculum gap detection across schools", "Teacher development recommendations", "Multi-language support"] },
+];
+export default function RoadmapPage() { return <main className="roadmap-page"><header><div className="brand"><span className="mosaic-mark">M</span><span>Mosaic<span>Roadmap</span></span></div><span className="eyebrow"><Layers3 size={14} />Internal pitch view</span></header><div className="roadmap-hero"><div className="eyebrow">From one answer slip to a clearer classroom</div><h1>Make the invisible visible.</h1><p>Mosaic helps teachers see where thinking is stuck, then gives every learner a next move.</p></div><section className="roadmap-grid">{phases.map((phase) => <article className={`roadmap-phase roadmap-phase--${phase.tone}`} key={phase.label}><div className="roadmap-phase__label">{phase.label}</div><ul>{phase.items.map((item) => <li key={item}>{phase.tone === "current" ? <Check size={15} /> : <ArrowRight size={15} />}{item}</li>)}</ul></article>)}</section></main>; }

@@ -1,5 +1,6 @@
 export type Tier = "red" | "yellow" | "green" | "blue";
 export type Confidence = "guessed" | "unsure" | "knew";
+export type ClassifierConfidence = "high" | "medium" | "low";
 
 export interface Learner {
   id: string;
@@ -9,7 +10,23 @@ export interface Learner {
   mastery: number;
   misconception?: string;
   flagged?: boolean;
+  confidentWrongCount?: number;
+  confusedWrongCount?: number;
+  clearedAt?: string | null;
   recent: string;
+}
+
+export interface AnswerInsight {
+  id: number;
+  questionId: string;
+  option: string;
+  correct: boolean;
+  confidence: Confidence;
+  feedback: string;
+  reasoning?: string | null;
+  classifierConfidence?: ClassifierConfidence | null;
+  teacherOverrideMisconceptionId?: string | null;
+  createdAt: string;
 }
 
 export interface PulseOption {
@@ -49,7 +66,7 @@ export const DEMO_LEARNERS: Learner[] = [
   { id: "s14", name: "Danish Iskandar", initials: "DI", tier: "green", mastery: 71, recent: "15 min ago" },
   { id: "s15", name: "Priya Nair", initials: "PN", tier: "green", mastery: 78, recent: "18 min ago" },
   { id: "s16", name: "Azlan Noor", initials: "AN", tier: "green", mastery: 74, recent: "24 min ago" },
-  { id: "s17", name: "Adam Ibrahim", initials: "AI", tier: "blue", mastery: 94, misconception: "Cleared: mass and weight", recent: "4 min ago" },
+  { id: "s17", name: "Adam Ibrahim", initials: "AI", tier: "blue", mastery: 94, misconception: "Cleared: mass and weight", recent: "4 min ago", clearedAt: new Date().toISOString() },
   { id: "s18", name: "Nadia Farhana", initials: "NF", tier: "blue", mastery: 91, recent: "11 min ago" },
   { id: "s19", name: "Kumar Raj", initials: "KR", tier: "blue", mastery: 88, recent: "19 min ago" },
   { id: "s20", name: "Alia Sofia", initials: "AS", tier: "blue", mastery: 96, recent: "30 min ago" },
