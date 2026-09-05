@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronRight, CircleAlert, Headphones, KeyRound, Lightbulb, LockKeyhole, UserRound, WifiOff } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, CheckCircle2, ChevronRight, CircleAlert, Headphones, KeyRound, Lightbulb, LockKeyhole, UserRound, Wifi, WifiOff } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { clearQueuedAnswers, listQueuedAnswers, queueAnswer } from "@/lib/offline";
 import { PULSE_QUESTIONS, type Confidence, type Learner, tierMeta } from "@shared/mosaic";
 
 function ConfidenceButtons({ value, onChange }: { value: Confidence; onChange: (value: Confidence) => void }) {
@@ -11,11 +12,48 @@ function ConfidenceButtons({ value, onChange }: { value: Confidence; onChange: (
 function StudentQuiz({ learner, onReturn }: { learner: Learner; onReturn: () => void }) {
   const [option, setOption] = useState("");
   const [confidence, setConfidence] = useState<Confidence>("unsure");
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+  const [queuedCount, setQueuedCount] = useState(0);
+  const [offlineFeedback, setOfflineFeedback] = useState<string | null>(null);
   const quiz = trpc.mosaic.answerQuiz.useMutation();
+  const syncOffline = trpc.mosaic.syncOffline.useMutation();
   const question = PULSE_QUESTIONS[0];
-  const feedback = quiz.data;
+  const feedback = quiz.data ?? (offlineFeedback ? { correct: false, feedback: offlineFeedback } : null);
 
-  return <main className="student-page"><header className="student-header"><button className="icon-back" onClick={onReturn}><ArrowLeft size={19} /></button><div className="student-header__brand"><span className="mosaic-mark">M</span><b>Mosaic Classroom</b></div><span className="offline-ready"><WifiOff size={14} />Offline-ready</span></header><div className="quiz-layout"><aside className="mission-rail"><div className="student-avatar" style={{ backgroundColor: tierMeta[learner.tier].color }}>{learner.initials}</div><h2>Hello, {learner.name.split(" ")[0]}.</h2><p>Your next small step is ready.</p><div className="mission-rail__step"><span>1</span><b>Warm up</b><small>Quick check</small></div><div className="mission-rail__step mission-rail__step--muted"><span>2</span><b>Practice</b><small>Build confidence</small></div><div className="mission-rail__step mission-rail__step--muted"><span>3</span><b>Reflect</b><small>Show what changed</small></div></aside><section className="quiz-card">{!feedback ? <><div className="quiz-card__header"><div><div className="eyebrow">Forces & Motion · warm up</div><h1>Let’s sort out one idea.</h1></div><button className="tts-button" onClick={() => window.speechSynthesis?.speak(new SpeechSynthesisUtterance(question.prompt))}><Headphones size={18} />Listen</button></div><div className="question-number"><span>Question 1 of 3</span><div><i /></div></div><p className="question-prompt">{question.prompt}</p><div className="option-list">{question.options.map((item) => <button key={item.label} className={option === item.label ? "option-card option-card--selected" : "option-card"} onClick={() => setOption(item.label)}><b>{item.label}</b><span>{item.value}</span></button>)}</div><div className="confidence-area"><span>How sure are you?</span><ConfidenceButtons value={confidence} onChange={setConfidence} /></div><button className="btn btn--student" disabled={!option || quiz.isPending} onClick={() => quiz.mutate({ learnerId: learner.id, option, confidence })}>{quiz.isPending ? "Checking your thinking…" : "Check my answer"}<ChevronRight size={18} /></button></> : <><div className={feedback.correct ? "feedback-icon feedback-icon--good" : "feedback-icon feedback-icon--warm"}>{feedback.correct ? <CheckCircle2 size={30} /> : <Lightbulb size={30} />}</div><div className="eyebrow">{feedback.correct ? "A strong start" : "Misconception detected"}</div><h1>{feedback.correct ? "You’ve got the key idea." : "Your thinking gave us a useful clue."}</h1><p className="feedback-copy">{feedback.feedback}</p>{!feedback.correct && <div className="thinking-box"><CircleAlert size={19} /><div><b>Try this image</b><p>Move the same backpack from Earth to the Moon. What stays inside it? What changes because the pull of gravity changes?</p></div></div>}<button className="btn btn--student" onClick={onReturn}>Back to the class list</button></>}</section></div></main>;
+  const refreshQueue = async () => setQueuedCount((await listQueuedAnswers()).length);
+  const flushQueue = async () => {
+    if (!navigator.onLine) return;
+    const pending = await listQueuedAnswers();
+    if (!pending.length) return;
+    syncOffline.mutate({ answers: pending.map(({ learnerId, option: queuedOption, confidence: queuedConfidence }) => ({ learnerId, option: queuedOption, confidence: queuedConfidence })) }, {
+      onSuccess: async () => {
+        await clearQueuedAnswers(pending.map((item) => item.id));
+        await refreshQueue();
+      },
+    });
+  };
+
+  useEffect(() => {
+    void refreshQueue();
+    const handleOnline = () => { setIsOnline(true); void flushQueue(); };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => { window.removeEventListener("online", handleOnline); window.removeEventListener("offline", handleOffline); };
+  }, []);
+
+  const handleCheck = async () => {
+    if (!option) return;
+    if (!navigator.onLine) {
+      await queueAnswer({ learnerId: learner.id, option, confidence });
+      await refreshQueue();
+      setOfflineFeedback("Your answer is saved on this device. We’ll check it and update your teacher’s view when the connection returns.");
+      return;
+    }
+    quiz.mutate({ learnerId: learner.id, option, confidence });
+  };
+
+  return <main className="student-page"><header className="student-header"><button className="icon-back" onClick={onReturn}><ArrowLeft size={19} /></button><div className="student-header__brand"><span className="mosaic-mark">M</span><b>Mosaic Classroom</b></div><span className="offline-ready">{isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}{isOnline ? "Online" : "Offline"}{queuedCount ? ` · ${queuedCount} saved` : ""}</span></header><div className="quiz-layout"><aside className="mission-rail"><div className="student-avatar" style={{ backgroundColor: tierMeta[learner.tier].color }}>{learner.initials}</div><h2>Hello, {learner.name.split(" ")[0]}.</h2><p>Your next small step is ready.</p><div className="mission-rail__step"><span>1</span><b>Warm up</b><small>Quick check</small></div><div className="mission-rail__step mission-rail__step--muted"><span>2</span><b>Practice</b><small>Build confidence</small></div><div className="mission-rail__step mission-rail__step--muted"><span>3</span><b>Reflect</b><small>Show what changed</small></div></aside><section className="quiz-card">{!feedback ? <><div className="quiz-card__header"><div><div className="eyebrow">{question.prompt.includes("mass") ? "Forces & Motion" : "Quick check"} · warm up</div><h1>Let’s sort out one idea.</h1></div><button className="tts-button" onClick={() => window.speechSynthesis?.speak(new SpeechSynthesisUtterance(question.prompt))}><Headphones size={18} />Listen</button></div><div className="question-number"><span>Question 1 of 3</span><div><i /></div></div><p className="question-prompt">{question.prompt}</p><div className="option-list">{question.options.map((item) => <button key={item.label} className={option === item.label ? "option-card option-card--selected" : "option-card"} onClick={() => setOption(item.label)}><b>{item.label}</b><span>{item.value}</span></button>)}</div><div className="confidence-area"><span>How sure are you?</span><ConfidenceButtons value={confidence} onChange={setConfidence} /></div><button className="btn btn--student" disabled={!option || quiz.isPending} onClick={() => void handleCheck()}>{quiz.isPending ? "Checking your thinking…" : isOnline ? "Check my answer" : "Save my answer"}<ChevronRight size={18} /></button></> : <><div className={feedback.correct ? "feedback-icon feedback-icon--good" : "feedback-icon feedback-icon--warm"}>{feedback.correct ? <CheckCircle2 size={30} /> : <Lightbulb size={30} />}</div><div className="eyebrow">{feedback.correct ? "A strong start" : offlineFeedback ? "Saved for sync" : "Misconception detected"}</div><h1>{feedback.correct ? "You’ve got the key idea." : offlineFeedback ? "Your answer is safe." : "Your thinking gave us a useful clue."}</h1><p className="feedback-copy">{feedback.feedback}</p>{!feedback.correct && !offlineFeedback && <div className="thinking-box"><CircleAlert size={19} /><div><b>Try this image</b><p>Move the same backpack from Earth to the Moon. What stays inside it? What changes because the pull of gravity changes?</p></div></div>}<button className="btn btn--student" onClick={onReturn}>Back to the class list</button></>}</section></div></main>;
 }
 
 export default function KioskExperience() {
