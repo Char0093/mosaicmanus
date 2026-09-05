@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
+import { useAuth } from "./_core/hooks/useAuth";
 import ErrorBoundary from "./components/ErrorBoundary";
 import KioskExperience from "./components/KioskExperience";
 import LiveJoinPage from "./pages/LiveJoinPage";
@@ -14,8 +16,22 @@ import TutorPerksPage from "./pages/TutorPerksPage";
 import EducatorWorkspacePage from "./pages/EducatorWorkspacePage";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
+function SessionRedirector() {
+  const auth = useAuth();
+  const [location, navigate] = useLocation();
+  useEffect(() => {
+    if (location !== "/" || auth.loading || !auth.user) return;
+    const savedIntent = localStorage.getItem("mosaic-role-intent");
+    const role = savedIntent === "teacher" || auth.user.role === "admin" || auth.user.role === "educator" ? "teacher" : "student";
+    localStorage.removeItem("mosaic-role-intent");
+    localStorage.removeItem("mosaic-role-intent-at");
+    navigate(role === "teacher" ? "/teacher" : "/student");
+  }, [auth.loading, auth.user, location, navigate]);
+  return null;
+}
+
 function Router() {
-  return <Switch>
+  return <><SessionRedirector /><Switch>
     <Route path="/" component={LoginLandingPage} />
     <Route path="/teacher" component={MosaicDashboard} />
     <Route path="/educator" component={EducatorWorkspacePage} />
@@ -29,7 +45,7 @@ function Router() {
     <Route path="/join/:code" component={LiveJoinPage} />
     <Route path="/roadmap" component={RoadmapPage} />
     <Route component={LoginLandingPage} />
-  </Switch>;
+  </Switch></>;
 }
 
 export default function App() {

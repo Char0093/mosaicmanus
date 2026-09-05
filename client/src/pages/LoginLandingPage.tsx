@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { startLogin } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { toast } from "sonner";
 
 type PanelRole = "teacher" | "student";
 
@@ -69,6 +70,14 @@ export default function LoginLandingPage() {
   const [confirm, setConfirm] = useState("");
   const [registerError, setRegisterError] = useState("");
   const [registerBusy, setRegisterBusy] = useState(false);
+
+  useEffect(() => {
+    const message = sessionStorage.getItem("mosaic-toast");
+    if (message) {
+      sessionStorage.removeItem("mosaic-toast");
+      toast.success(message);
+    }
+  }, []);
 
   const register = (event: React.FormEvent) => {
     event.preventDefault();
