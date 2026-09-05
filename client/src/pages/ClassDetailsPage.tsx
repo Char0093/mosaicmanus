@@ -1,0 +1,14 @@
+import { useState } from "react";
+import { ArrowLeft, Copy, QrCode, Users, BookOpenCheck } from "lucide-react";
+import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
+
+export default function ClassDetailsPage() {
+  const workspace = trpc.mosaic.workspace.useQuery();
+  const students = trpc.mosaic.classStudents.useQuery({ id: workspace.data?.classroom.id ?? "" }, { enabled: Boolean(workspace.data?.classroom.id) });
+  const [copied, setCopied] = useState(false);
+  if (workspace.isLoading || !workspace.data) return <div className="app-loading"><div className="mosaic-mark">M</div><p>Loading class details…</p></div>;
+  const { classroom, quizzes } = workspace.data;
+  const copyCode = async () => { await navigator.clipboard?.writeText(classroom.kioskCode); setCopied(true); toast.success("Class code copied"); window.setTimeout(() => setCopied(false), 2000); };
+  return <main className="class-details-page"><header className="workspace-header"><a href="/teacher" className="brand"><span className="mosaic-mark">M</span><span>Mosaic<span>Classroom</span></span></a><a className="text-button" href="/teacher"><ArrowLeft size={15} />Back to dashboard</a></header><section className="class-details-content"><div className="eyebrow">Class management</div><h1>{classroom.name}</h1><p className="class-details-lede">{classroom.subject} · Your classroom details and student access hub.</p><div className="class-details-grid"><section className="class-code-hero"><div className="eyebrow"><QrCode size={14} />Permanent class access</div><h2>{classroom.kioskCode}</h2><p>Students go to <b>/kiosk</b>, enter this code, and choose their name.</p><button className="btn btn--student" onClick={copyCode}><Copy size={15} />{copied ? "Copied!" : "Copy class code"}</button><div className="qr-placeholder"><QrCode size={52} /><span>QR join code</span></div></section><section className="class-detail-summary"><div><span>Subject</span><b>{classroom.subject}</b></div><div><span>Students</span><b><Users size={15} />{students.data?.length ?? 0}</b></div><div><span>Created</span><b>Active classroom</b></div><a className="btn btn--soft" href="/teacher/quiz"><BookOpenCheck size={15} />View assigned quizzes</a></section></div><section className="class-detail-panel"><div className="panel-heading"><div><div className="eyebrow">Assigned assessments</div><h2>Quizzes for this class</h2></div><a className="text-button" href="/teacher/quiz">Manage quizzes <ArrowLeft size={14} /></a></div>{quizzes.length ? quizzes.map((quiz) => <div className="class-quiz-row" key={quiz.id}><span><b>{quiz.title}</b><small>{quiz.questionCount} questions</small></span><span className="status-pill">{quiz.published ? "Published" : "Draft"}</span></div>) : <div className="empty-state">No quizzes assigned yet. <a href="/teacher/quiz/create">Create one now.</a></div>}</section></section></main>;
+}
