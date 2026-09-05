@@ -2,6 +2,21 @@ export type Tier = "red" | "yellow" | "green" | "blue";
 export type Confidence = "guessed" | "unsure" | "knew";
 export type ClassifierConfidence = "high" | "medium" | "low";
 
+export const SUBJECTS = [
+  { name: "Science", icon: "⚗️", default_topics: ["Forces & Motion", "Living Things", "Matter & Properties"] },
+  { name: "Mathematics", icon: "📐", default_topics: ["Fractions", "Algebra", "Geometry"] },
+  { name: "English", icon: "📚", default_topics: ["Reading comprehension", "Grammar", "Writing"] },
+  { name: "Malay", icon: "📝", default_topics: ["Tatabahasa", "Pemahaman", "Karangan"] },
+  { name: "History", icon: "🏛️", default_topics: ["Early civilizations", "Sources and evidence", "National history"] },
+  { name: "Geography", icon: "🌍", default_topics: ["Maps and scale", "Weather and climate", "Human geography"] },
+  { name: "Physics", icon: "⚛️", default_topics: ["Motion", "Energy", "Electricity"] },
+  { name: "Chemistry", icon: "🧪", default_topics: ["Particles", "Chemical reactions", "Acids and bases"] },
+  { name: "Biology", icon: "🧬", default_topics: ["Cells", "Ecology", "Human systems"] },
+  { name: "Computer Science", icon: "💻", default_topics: ["Algorithms", "Data", "Programming"] },
+] as const;
+
+export const YEAR_LEVELS = ["Primary 4", "Primary 5", "Primary 6", "Form 1", "Form 2", "Form 3", "Form 4", "Form 5", "Year 7", "Year 8", "Year 9", "Year 10", "Year 11", "Year 12"] as const;
+
 export interface Learner {
   id: string;
   name: string;

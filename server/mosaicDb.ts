@@ -1,5 +1,5 @@
 import { and, asc, desc, eq } from "drizzle-orm";
-import { answers, chapters, classroomAccess, classrooms, learners, milestones, notifications, peerTutoringSessions, pulseSessions, quizzes, tutorPerks } from "../drizzle/schema";
+import { answers, chapters, classroomAccess, classrooms, learners, milestones, misconceptions, notifications, peerTutoringSessions, pulseSessions, quizzes, tutorPerks } from "../drizzle/schema";
 import { CLASSROOM, DEMO_LEARNERS, type AnswerInsight, type Learner, type PulseQuestion } from "../shared/mosaic";
 import { getDb } from "./db";
 
@@ -284,6 +284,49 @@ export async function createClassroom(input: { name: string; subject: string; to
   await db.insert(classrooms).values({ slug, name: input.name, subject: input.subject, kioskCode, topics: JSON.stringify(input.topics) });
   const row = (await db.select().from(classrooms).where(eq(classrooms.slug, slug)).limit(1))[0];
   return { classroom: row ? classroomForWorkspace(row) : { ...CLASSROOM, id: slug, name: input.name, subject: input.subject, kioskCode, topics: input.topics }, created: true };
+}
+
+const starterMisconceptions = [
+  { name: "Uses a memorized rule without checking the context", explanation: "The learner applies a familiar rule even when the question changes the conditions." },
+  { name: "Confuses two related ideas", explanation: "The learner treats two connected concepts as interchangeable instead of identifying what makes them different." },
+  { name: "Skips the evidence step", explanation: "The learner jumps to an answer without using the information, units, or evidence provided in the question." },
+];
+
+function classSummary(row: ClassroomRow) {
+  return { id: String(row.id), slug: row.slug, name: row.name, subject: row.subject, yearLevel: row.yearLevel ?? "", description: row.description ?? "", kioskCode: row.kioskCode, topics: parseJson(row.topics, [] as string[]), createdAt: row.createdAt.toISOString() };
+}
+
+async function seedMisconceptions(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, subject: string, topics: string[]) {
+  for (const topic of topics) {
+    const existing = await db.select().from(misconceptions).where(and(eq(misconceptions.subject, subject), eq(misconceptions.topic, topic))).limit(1);
+    if (existing.length === 0) await db.insert(misconceptions).values(starterMisconceptions.map((item) => ({ subject, topic, name: item.name, explanation: item.explanation })));
+  }
+}
+
+export async function listTeacherClassrooms(teacherId?: number) {
+  const db = await getDb();
+  const fallback = [{ id: CLASSROOM.id, slug: CLASSROOM.id, name: CLASSROOM.name, subject: CLASSROOM.subject, yearLevel: "Form 2", description: "Science foundations and live misconception checks.", kioskCode: CLASSROOM.kioskCode, topics: CLASSROOM.topics, createdAt: new Date().toISOString() }];
+  if (!db) return fallback;
+  const rows = teacherId ? await db.select().from(classrooms).where(eq(classrooms.teacherId, teacherId)).orderBy(desc(classrooms.createdAt)) : await db.select().from(classrooms).orderBy(desc(classrooms.createdAt));
+  return rows.length ? rows.map(classSummary) : fallback;
+}
+
+export async function createTeacherClassroom(input: { name: string; subject: string; yearLevel: string; topics: string[]; description?: string }, teacherId?: number) {
+  const db = await getDb();
+  if (!db) return { id: `local-${Date.now()}`, slug: `local-${Date.now()}`, name: input.name, subject: input.subject, yearLevel: input.yearLevel, description: input.description ?? "", kioskCode: Math.random().toString(36).substring(2, 9).toUpperCase(), topics: input.topics, createdAt: new Date().toISOString() };
+  let kioskCode = "";
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const candidate = Math.random().toString(36).substring(2, 9).toUpperCase();
+    const collision = await db.select({ id: classrooms.id }).from(classrooms).where(eq(classrooms.kioskCode, candidate)).limit(1);
+    if (!collision.length) { kioskCode = candidate; break; }
+  }
+  if (!kioskCode) throw new Error("Could not generate a unique class code. Please try again.");
+  const slug = `${input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${Date.now().toString(36).slice(-5)}`;
+  await db.insert(classrooms).values({ teacherId: teacherId ?? null, slug, name: input.name, subject: input.subject, yearLevel: input.yearLevel, description: input.description ?? null, kioskCode, topics: JSON.stringify(input.topics) });
+  await seedMisconceptions(db, input.subject, input.topics);
+  const row = (await db.select().from(classrooms).where(eq(classrooms.slug, slug)).limit(1))[0];
+  if (!row) throw new Error("Class was created but could not be loaded.");
+  return classSummary(row);
 }
 
 export async function createChapter(input: { title: string; description: string; published: boolean }) {

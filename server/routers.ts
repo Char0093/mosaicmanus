@@ -9,6 +9,7 @@ import {
   claimTutorPerk,
   createChapter,
   createClassroom,
+  createTeacherClassroom,
   createQuiz,
   createLiveSession,
   getClassroomByKioskCode,
@@ -17,6 +18,7 @@ import {
   getLiveSession,
   getNotifications,
   getPeerTutoringRecognition,
+  listTeacherClassrooms,
   getStudentAnalytics,
   launchLiveSession,
   overrideLearnerMisconception,
@@ -97,6 +99,8 @@ export const appRouter = router({
     logout: publicProcedure.mutation(({ ctx }) => { const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 }); return { success: true } as const; }),
   }),
   mosaic: router({
+    listTeacherClasses: publicProcedure.query(({ ctx }) => listTeacherClassrooms(ctx.user?.id)),
+    createClass: publicProcedure.input(z.object({ name: z.string().trim().min(2).max(160), subject: z.string().trim().min(2).max(120), yearLevel: z.string().trim().min(2).max(40), topics: z.array(z.string().trim().min(1).max(160)).min(1).max(20), description: z.string().trim().max(1000).optional() })).mutation(({ input, ctx }) => createTeacherClassroom(input, ctx.user?.id)),
     dashboard: publicProcedure.query(async () => {
       const state = await readClassroomState();
       const { counts, massWeightCount, confidentErrors, confusedAttempts } = cohortSummary(state.learners);

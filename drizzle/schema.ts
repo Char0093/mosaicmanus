@@ -13,7 +13,7 @@ export const users = mysqlTable("users", {
 });
 
 export const classrooms = mysqlTable("classrooms", {
-  id: int("id").autoincrement().primaryKey(), slug: varchar("slug", { length: 120 }).notNull().unique(), name: varchar("name", { length: 160 }).notNull(), subject: varchar("subject", { length: 120 }).notNull(), kioskCode: varchar("kioskCode", { length: 32 }).notNull().unique(), topics: text("topics").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull(),
+  id: int("id").autoincrement().primaryKey(), slug: varchar("slug", { length: 120 }).notNull().unique(), teacherId: int("teacherId").references(() => users.id, { onDelete: "set null" }), name: varchar("name", { length: 160 }).notNull(), subject: varchar("subject", { length: 120 }).notNull(), yearLevel: varchar("yearLevel", { length: 40 }), description: text("description"), kioskCode: varchar("kioskCode", { length: 32 }).notNull().unique(), topics: text("topics").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({ slugIndex: uniqueIndex("classrooms_slug_idx").on(table.slug) }));
 
 export const learners = mysqlTable("learners", {
@@ -56,6 +56,10 @@ export const peerTutoringSessions = mysqlTable("peerTutoringSessions", {
   id: int("id").autoincrement().primaryKey(), classroomId: int("classroomId").notNull().references(() => classrooms.id, { onDelete: "cascade" }), tutorLearnerId: int("tutorLearnerId").notNull().references(() => learners.id, { onDelete: "cascade" }), tuteeLearnerId: int("tuteeLearnerId").notNull().references(() => learners.id, { onDelete: "cascade" }), misconceptionName: varchar("misconceptionName", { length: 180 }).notNull(), status: mysqlEnum("status", ["in_progress", "completed"]).notNull().default("in_progress"), teacherCommended: boolean("teacher_commended").notNull().default(false), completedAt: timestamp("completedAt"), createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({ peerClassIndex: index("peer_tutoring_class_idx").on(table.classroomId), peerStatusIndex: index("peer_tutoring_status_idx").on(table.status) }));
 
+export const misconceptions = mysqlTable("misconceptions", {
+  id: int("id").autoincrement().primaryKey(), subject: varchar("subject", { length: 120 }).notNull(), topic: varchar("topic", { length: 160 }).notNull(), name: varchar("name", { length: 180 }).notNull(), explanation: text("explanation").notNull(), createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({ misconceptionTopicIndex: index("misconceptions_subject_topic_idx").on(table.subject, table.topic) }));
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type Classroom = typeof classrooms.$inferSelect;
@@ -68,3 +72,4 @@ export type QuizRow = typeof quizzes.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
 export type TutorPerkRow = typeof tutorPerks.$inferSelect;
 export type PeerTutoringSessionRow = typeof peerTutoringSessions.$inferSelect;
+export type MisconceptionRow = typeof misconceptions.$inferSelect;

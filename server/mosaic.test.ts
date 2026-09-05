@@ -81,4 +81,11 @@ describe("mosaic classroom contracts", () => {
     expect(sessions[0]).toMatchObject({ status: "completed", tutorName: "Adam Ibrahim", tuteeName: "Hana Yusof" });
     expect(sessions[0]?.misconceptionName).toBeTruthy();
   });
+
+  it("lists teacher classes with kiosk metadata and validates class creation input", async () => {
+    const caller = appRouter.createCaller(createPublicContext());
+    const classes = await caller.mosaic.listTeacherClasses();
+    expect(classes[0]).toMatchObject({ name: "Form 2 Science", subject: "Science", kioskCode: "MOSAIC01" });
+    await expect(caller.mosaic.createClass({ name: "", subject: "Science", yearLevel: "Form 2", topics: [] })).rejects.toThrow();
+  });
 });
