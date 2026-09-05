@@ -182,11 +182,28 @@ export async function launchLiveSession(joinCode: string) {
 export async function getStudentAnalytics(externalId: string) {
   const profile = await getLearnerProfile(externalId);
   if (!profile) return null;
+  const db = await getDb();
+  const learnerRow = db ? (await db.select().from(learners).where(eq(learners.externalId, externalId)).limit(1))[0] : undefined;
+  const milestoneRows = db && learnerRow ? await db.select().from(milestones).where(eq(milestones.learnerId, learnerRow.id)) : [];
   const topicData = [
-    { topic: "Forces & Motion", current: profile.learner.mastery, previous: Math.max(0, profile.learner.mastery - 11) },
-    { topic: "Living Things", current: Math.min(100, profile.learner.mastery + 8), previous: Math.max(0, profile.learner.mastery - 2) },
-    { topic: "Matter & Properties", current: Math.max(0, profile.learner.mastery - 7), previous: Math.max(0, profile.learner.mastery - 17) },
+    { topic: "Forces & Motion", current: profile.learner.mastery, mastery_score: profile.learner.mastery, previous: Math.max(0, profile.learner.mastery - 11) },
+    { topic: "Living Things", current: Math.min(100, profile.learner.mastery + 8), mastery_score: Math.min(100, profile.learner.mastery + 8), previous: Math.max(0, profile.learner.mastery - 2) },
+    { topic: "Matter & Properties", current: Math.max(0, profile.learner.mastery - 7), mastery_score: Math.max(0, profile.learner.mastery - 7), previous: Math.max(0, profile.learner.mastery - 17) },
   ];
+  const topicNames = topicData.map((item) => item.topic);
+  const topicForQuestion = (questionId: string) => questionId.toLowerCase().includes("living") || questionId === "q2" ? "Living Things" : questionId.toLowerCase().includes("matter") || questionId === "q3" ? "Matter & Properties" : "Forces & Motion";
+  const sessionRows = [...profile.answers].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const sessionTrend = sessionRows.length ? sessionRows.map((answer, index) => {
+    const data: Record<string, string | number> = { session: new Date(answer.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) };
+    topicNames.forEach((topic, topicIndex) => { data[topic] = topic === topicForQuestion(answer.questionId) ? Math.max(0, Math.min(100, topicData[topicIndex].previous + (answer.correct ? (index + 1) * 7 : -(index + 1) * 4))) : topicData[topicIndex].previous; });
+    return data;
+  }) : ["Mon", "Wed", "Fri"].map((session, index) => ({ session, "Forces & Motion": Math.max(0, profile.learner.mastery - 16 + index * 8), "Living Things": Math.max(0, profile.learner.mastery - 7 + index * 7), "Matter & Properties": Math.max(0, profile.learner.mastery - 20 + index * 9) }));
+  const misconceptionCounts = new Map<string, number>();
+  profile.answers.filter((answer) => !answer.correct).forEach((answer) => { const name = answer.teacherOverrideMisconceptionId ?? (answer.reasoning?.replace(/^Teacher override:\s*/i, "") || profile.learner.misconception || "Mass and weight are the same thing"); misconceptionCounts.set(name, (misconceptionCounts.get(name) ?? 0) + 1); });
+  const misconceptionFrequency = Array.from(misconceptionCounts, ([misconception, count]) => ({ misconception, count })).sort((a, b) => b.count - a.count);
+  if (!misconceptionFrequency.length && profile.learner.misconception) misconceptionFrequency.push({ misconception: profile.learner.misconception, count: 1 });
+  const weekStart = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const clearedThisWeek = milestoneRows.filter((milestone) => milestone.clearedAt.getTime() >= weekStart).length;
   const matrix = { knewCorrect: 0, knewWrong: 0, unsureCorrect: 0, unsureWrong: 0 };
   profile.answers.forEach((answer) => {
     if (answer.confidence === "knew" && answer.correct) matrix.knewCorrect += 1;
@@ -194,7 +211,7 @@ export async function getStudentAnalytics(externalId: string) {
     else if (answer.correct) matrix.unsureCorrect += 1;
     else matrix.unsureWrong += 1;
   });
-  return { learner: profile.learner, answers: profile.answers, topicData, timeline: [4, 4, 3, 3, 2, profile.learner.misconception ? 2 : 1].map((active, index) => ({ session: `S${index + 1}`, active, cleared: index === 5 && Boolean(profile.learner.clearedAt) })), matrix, strongest: topicData.reduce((a, b) => a.current > b.current ? a : b).topic, opportunity: topicData.reduce((a, b) => a.current < b.current ? a : b).topic };
+  return { learner: profile.learner, answers: profile.answers, topicData, sessionTrend, misconceptionFrequency, clearedThisWeek, timeline: [4, 4, 3, 3, 2, profile.learner.misconception ? 2 : 1].map((active, index) => ({ session: `S${index + 1}`, active, cleared: index === 5 && Boolean(profile.learner.clearedAt) })), matrix, strongest: topicData.reduce((a, b) => a.current > b.current ? a : b).topic, opportunity: topicData.reduce((a, b) => a.current < b.current ? a : b).topic };
 }
 
 
