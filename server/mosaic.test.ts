@@ -51,4 +51,25 @@ describe("mosaic classroom contracts", () => {
     expect(result.strongest).toBeTruthy();
     expect(result.opportunity).toBeTruthy();
   });
+
+  it("returns an educator workspace with chapters and quiz materials", async () => {
+    const caller = appRouter.createCaller(createPublicContext());
+    const result = await caller.mosaic.workspace();
+
+    expect(result.classroom.name).toBeTruthy();
+    expect(result.chapters.length).toBeGreaterThan(0);
+    expect(result.quizzes.length).toBeGreaterThan(0);
+    expect(result.quizzes[0]?.questionCount).toBeGreaterThan(0);
+  });
+
+  it("keeps notification audiences and tutor perks separate", async () => {
+    const caller = appRouter.createCaller(createPublicContext());
+    const educatorNotifications = await caller.mosaic.notifications({ audience: "educator" });
+    const studentNotifications = await caller.mosaic.notifications({ audience: "student", learnerId: "s6" });
+    const perks = await caller.mosaic.tutorPerks();
+
+    expect(educatorNotifications.every((item) => item.audience === "educator")).toBe(true);
+    expect(studentNotifications.every((item) => item.audience === "student")).toBe(true);
+    expect(perks.length).toBeGreaterThan(0);
+  });
 });

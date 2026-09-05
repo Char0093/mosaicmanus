@@ -6,15 +6,23 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import {
   clearLearnerMisconception,
+  claimTutorPerk,
+  createChapter,
+  createClassroom,
+  createQuiz,
   createLiveSession,
   getClassroomByKioskCode,
   getDemoClassroom,
   getLearnerProfile,
   getLiveSession,
+  getNotifications,
   getStudentAnalytics,
   launchLiveSession,
   overrideLearnerMisconception,
   persistAnswer,
+  getTutorPerks,
+  getWorkspace,
+  markNotificationRead,
 } from "./mosaicDb";
 import { CLASSROOM, DEMO_LEARNERS, PULSE_QUESTIONS, tierMeta, type Learner } from "../shared/mosaic";
 
@@ -92,12 +100,13 @@ export const appRouter = router({
       const { counts, massWeightCount, confidentErrors, confusedAttempts } = cohortSummary(state.learners);
       return { classroom: state.classroom, learners: state.learners, counts, confidenceSignals: { confidentErrors, confusedAttempts }, pulse: pulseStartedAt ? { active: true, startedAt: pulseStartedAt, questions: PULSE_QUESTIONS } : { active: false, questions: PULSE_QUESTIONS }, actionCard: { title: massWeightCount > 5 ? "Hana’s response needs a reset" : "A concept needs a class-wide reset", summary: `${massWeightCount} students are confusing mass with weight in Forces & Motion.`, recommendation: confidentErrors > confusedAttempts ? "Use a counterexample: move the same backpack from Earth to the Moon and ask what actually changes." : "Start with a two-column sort: ‘amount of matter’ and ‘gravity’s pull’. Then ask students to explain one choice to a partner.", affected: massWeightCount, topic: "Forces & Motion", interventionType: confidentErrors > confusedAttempts ? "Confrontational correction" : "Scaffolded confidence building" } };
     }),
-    studentDashboard: publicProcedure.input(z.object({ learnerId: z.string().default("s6") })).query(async ({ input }) => {
-      const profile = await getLearnerProfile(input.learnerId);
-      const learner = profile?.learner ?? fallbackLearners.find((item) => item.id === input.learnerId) ?? fallbackLearners[5];
+    studentDashboard: publicProcedure.input(z.object({ learnerId: z.string().default("s6") })).query(async () => {
+      const studentId = "s6";
+      const profile = await getLearnerProfile(studentId);
+      const learner = profile?.learner ?? fallbackLearners.find((item) => item.id === studentId) ?? fallbackLearners[5];
       return { classroom: CLASSROOM, learner, answers: profile?.answers ?? [], masteryMap: CLASSROOM.topics.map((topic, index) => ({ topic, mastery: Math.max(25, Math.min(100, learner.mastery + (index === 0 ? 0 : index === 1 ? 9 : -6))), cleared: Boolean(learner.clearedAt && index === 0) })) };
     }),
-    studentAnalytics: publicProcedure.input(z.object({ learnerId: z.string().default("s6") })).query(async ({ input }) => getStudentAnalytics(input.learnerId) ?? { learner: fallbackLearners[5], answers: [], topicData: [], timeline: [], matrix: { knewCorrect: 0, knewWrong: 0, unsureCorrect: 0, unsureWrong: 0 }, strongest: "Forces & Motion", opportunity: "Matter & Properties" }),
+    studentAnalytics: publicProcedure.input(z.object({ learnerId: z.string().default("s6") })).query(async () => getStudentAnalytics("s6") ?? { learner: fallbackLearners[5], answers: [], topicData: [], timeline: [], matrix: { knewCorrect: 0, knewWrong: 0, unsureCorrect: 0, unsureWrong: 0 }, strongest: "Forces & Motion", opportunity: "Matter & Properties" }),
     learnerProfile: publicProcedure.input(z.object({ learnerId: z.string() })).query(async ({ input }) => {
       const profile = await getLearnerProfile(input.learnerId);
       return profile ?? { learner: fallbackLearners.find((item) => item.id === input.learnerId) ?? fallbackLearners[0], answers: [] };
@@ -123,6 +132,14 @@ export const appRouter = router({
       } catch (error) { console.warn("[Mosaic scanner] scan failed", error); return { results: [], unmatched_names: [], total_slips_detected: 0, processed_at: new Date().toISOString(), error: "scan_failed", message: "Could not read the slips clearly. Try better lighting or a steadier image." }; }
     }),
     confirmScan: publicProcedure.input(z.object({ results: z.array(z.object({ matched_student_id: z.string().nullable(), answers: z.record(z.string(), z.union([z.enum(["A", "B", "C", "D"]), z.null()])) })), correctAnswers: z.record(z.string(), z.enum(["A", "B", "C", "D"])) })).mutation(async ({ input }) => { let processed = 0; for (const result of input.results) { if (!result.matched_student_id) continue; for (const [questionId, option] of Object.entries(result.answers)) { if (!option) continue; const correct = option === input.correctAnswers[questionId]; const classification = classifyAnswer(option, correct); await persistAnswer({ learnerId: result.matched_student_id, option, correct, confidence: "unsure", feedback: deterministicFeedback(correct), questionId, ...classification }); } processed += 1; } return { processed }; }),
+    workspace: publicProcedure.query(async () => getWorkspace()),
+    openClassroom: publicProcedure.input(z.object({ name: z.string().min(3).max(160), subject: z.string().min(2).max(120), topics: z.array(z.string().min(2)).min(1).max(12) })).mutation(({ input }) => createClassroom(input)),
+    createChapter: publicProcedure.input(z.object({ title: z.string().min(2).max(180), description: z.string().min(5).max(500), published: z.boolean().default(false) })).mutation(({ input }) => createChapter(input)),
+    uploadQuiz: publicProcedure.input(z.object({ title: z.string().min(2).max(180), chapterId: z.string().nullable().optional(), sourceFilename: z.string().max(240).optional(), questions: z.array(z.object({ id: z.string(), prompt: z.string(), options: z.array(z.string()).min(2).max(6) })).min(1).max(50), published: z.boolean().default(false) })).mutation(({ input }) => createQuiz(input)),
+    notifications: publicProcedure.input(z.object({ audience: z.enum(["educator", "tutor", "student"]), learnerId: z.string().optional() })).query(({ input }) => getNotifications(input.audience, input.learnerId)),
+    markNotificationRead: publicProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => markNotificationRead(input.id)),
+    tutorPerks: publicProcedure.query(() => getTutorPerks()),
+    claimTutorPerk: publicProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => claimTutorPerk(input.id)),
     groups: publicProcedure.query(async () => { const state = await readClassroomState(); return (Object.keys(tierMeta) as Array<keyof typeof tierMeta>).map((tier) => ({ tier, ...tierMeta[tier], learners: state.learners.filter((learner) => learner.tier === tier) })); }),
     tutor: publicProcedure.input(z.object({ message: z.string().min(1).max(400) })).mutation(({ input }) => ({ response: input.message.toLowerCase().includes("weight") || input.message.toLowerCase().includes("mass") ? "Try this: imagine taking a backpack to the Moon. Its mass—how much matter is in it—stays the same. Its weight changes because the Moon’s gravity pulls less strongly." : "Tell me which part feels confusing. We can sort what stays the same from what changes, one idea at a time." })),
   }),

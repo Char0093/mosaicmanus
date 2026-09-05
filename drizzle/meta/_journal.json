@@ -22,6 +22,13 @@
       "when": 1788597161203,
       "tag": "0002_jittery_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1788608616596,
+      "tag": "0003_tan_payback",
+      "breakpoints": true
     }
   ]
 }
